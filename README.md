@@ -70,7 +70,7 @@ ExBEMT implements several models to provide a range of fidelity and computationa
 
 1.  **Clone the Repository:**
     ```bash
-    git clone [https://github.com/your-username/ExBEMT.git](https://github.com/your-username/ExBEMT.git)
+    git clone [https://github.com/egekonuk/ExBEMT.git](https://github.com/egekonuk/ExBEMT.git)
     ```
 2.  **Open in MATLAB:** Navigate to the cloned repository folder in MATLAB.
 3.  **Run the App:** Open the `ExBEMT_GUI.m` file in the editor and click the **Run** button, or type the following in the MATLAB command window:
@@ -132,7 +132,7 @@ Konuk E., "Computer Based Modeling for Small e-VTOL Propeller Performance," Ph.D
 
 ## Contact
 
-For questions, issues, or collaboration, please open an issue on GitHub or contact Ege Konuk at [egekonuk@gmail.com](mailto:egekonuk@gmail.com).
+For questions, issues, or collaboration, please open an issue on GitHub or contact me :)
 
 
 
