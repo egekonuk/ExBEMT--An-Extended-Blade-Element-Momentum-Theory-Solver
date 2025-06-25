@@ -14,7 +14,7 @@
 
 Welcome to ExBEMT! My name is Ege Konuk, and this tool is a direct result of my PhD research in Aerospace Engineering at Old Dominion University. My work specializes in propeller performance prediction and developing reduced-order aerodynamic models for electric aircraft.
 
-I believe that advanced engineering tools shouldn't be confined to commercial software or specialized research labs. My goal in making ExBEMT public is to provide a powerful, intuitive, and accessible open-source tool for students, hobbyists, and professional engineers. I hope it aids in your own research, design projects, and learning.
+I believe in the power of simplicity and in making complex aerodynamic problems digestible for practical use. With ExBEMT, my goal was to embody this approach by creating a tool with a very gentle learning curve. I wanted it to be powerful enough for detailed research yet intuitive enough to become a go-to utility in any engineer's or enthusiast's toolkit. I hope it aids you in your own design projects, learning, and discovery :)
 
 ---
 
@@ -100,6 +100,14 @@ ExBEMT is designed to be modular. To add your own propeller, create a new folder
 2.  **Airfoil `.dat` files:** Coordinate files for each airfoil used in the propeller design, with names corresponding to those in the `Prop_sections.xlsx` file.
 
 Once the folder is created, restart the GUI, and the new propeller will appear in the dropdown menu.
+
+---
+
+## Acknowledgements
+
+The automated, parallel-processing interface with XFOIL was made possible thanks to the excellent `XFOILinterface` class developed by **Rafael Fernandes de Oliveira**. This tool is highly recommended for anyone looking to integrate XFOIL with MATLAB.
+
+* [theolivenbaum/XFOILinterface on GitHub](https://github.com/theolivenbaum/XFOILinterface)
 
 ---
 
