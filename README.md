@@ -124,7 +124,7 @@ This project is licensed under the GNU General Public License v3.0 - see the [LI
 If you use ExBEMT in your research, please consider citing it:
 
 
-Konuk, E. (2025). Computer Based Modeling for Small e-VTOL Propeller Performance. GitHub. https://github.com/egekonuk/ExBEMT
+Konuk, E. (2025).GitHub. https://github.com/egekonuk/ExBEMT
 
 
 Or, by citing my PhD Dissertation:
