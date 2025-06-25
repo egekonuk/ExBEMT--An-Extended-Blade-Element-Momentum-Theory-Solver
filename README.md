@@ -2,7 +2,7 @@
 
 ![image](https://github.com/user-attachments/assets/3ab02815-5df5-4a92-b018-612111ecc945)
 
-[![MATLAB](https://img.shields.io/badge/MATLAB-R2021b%2B-blue)](https://www.mathworks.com)
+[![MATLAB](https://img.shields.io/badge/MATLAB-R2024a%2B-blue)](https://www.mathworks.com)
 
 **ExBEMT (aka Extended-BEMT) is a modular BEMT-Based tool with some improvements for small-scale propellers and VTOL proprotors, optimized for high-incidence conditions and real-time simulation. Fast, accurate, and built for early-stage design and testing.**
 
