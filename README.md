@@ -38,7 +38,7 @@ I believe that advanced engineering tools shouldn't be confined to commercial so
 
 The intuitive GUI allows for complete control over the simulation parameters, from atmospheric conditions and RPM to the specific analysis range and fidelity model.
 
-![Main ExBEMT GUI](https://raw.githubusercontent.com/your-username/your-repo/main/path/to/your/gui_screenshot.png)
+![ExBEMT-Window](https://github.com/user-attachments/assets/3341133c-198a-443a-907d-3391ddf8106c)
 
 ### Detailed Azimuthal Contour Plots
 
@@ -62,7 +62,7 @@ ExBEMT implements several models to provide a range of fidelity and computationa
 
 ### Prerequisites
 
-* MATLAB (R2021b or newer)
+* MATLAB (R2024a or newer)
 * MATLAB Aerospace Toolbox (for `atmosisa` and `convangvel` functions)
 * XFOIL: The executable (`xfoil.exe` for Windows) must be included in the project's root directory or in your system's PATH.
 
@@ -114,12 +114,12 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 If you use ExBEMT in your research, please consider citing it:
 
 
-Konuk, E. (2025). ExBEMT: An Extended Blade Element Momentum Theory Solver. GitHub. https://github.com/your-username/ExBEMT
+Konuk, E. (2025). Computer Based Modeling for Small e-VTOL Propeller Performance. GitHub. https://github.com/egekonuk/ExBEMT
 
 
-Or, by citing the related research paper:
+Or, by citing my PhD Dissertation:
 
-Konuk E., and Landman, D., "Computer Based Modeling for Tilt-Wing e-VTOL Propeller Performance," AIAA SciTech 2023 Forum, National Harbor, MD, 2023.
+Konuk E., "Computer Based Modeling for Small e-VTOL Propeller Performance," Ph.D Dissertation, Old Dominion University, 2024. https://digitalcommons.odu.edu/mae_etds/627/ DOI: 10.25777/8agh-jw47
 
 
 ## Contact
@@ -128,4 +128,4 @@ For questions, issues, or collaboration, please open an issue on GitHub or conta
 
 
 
-![ExBEMT-Window](https://github.com/user-attachments/assets/3341133c-198a-443a-907d-3391ddf8106c)
+
