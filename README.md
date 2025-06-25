@@ -40,11 +40,13 @@ The intuitive GUI allows for complete control over the simulation parameters, fr
 
 ![ExBEMT-Window](https://github.com/user-attachments/assets/3341133c-198a-443a-907d-3391ddf8106c)
 
+![ExBEMT_analysis_AOI](https://github.com/user-attachments/assets/5998a493-6020-41fc-b362-c273f3714392)
+
 ### Detailed Azimuthal Contour Plots
 
 Visualize the aerodynamic loads and flow conditions across the entire propeller disk for any flight condition. The tool automatically generates comparison plots to show the effects of different inflow models.
 
-![Contour Plot Showcase](https://raw.githubusercontent.com/your-username/your-repo/main/path/to/your/contour_plot_screenshot.png)
+![ExBEMT_Contours](https://github.com/user-attachments/assets/0156d7ad-16bb-47e4-99ee-b95519d3c28e)
 
 ---
 
