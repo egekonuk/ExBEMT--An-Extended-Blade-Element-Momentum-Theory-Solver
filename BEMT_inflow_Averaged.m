@@ -17,7 +17,7 @@ function [TT_final,TN_final,TQ_final,CTT_final,CNT_final,CQT_final]=BEMT_inflow_
 %       CTT_final, CNT_final, CQT_final - Corresponding coefficients (from BEMT)
 
 %% CODE STARTS
-global B R omega rho k_w Np delta_x c x_blade CL_P CD_P AoA_data radial_correct Use_3D_polar Sel_Prop
+global B R omega rho Np delta_x c x_blade CL_P CD_P AoA_data radial_correct Use_3D_polar Sel_Prop
 %% initialization BEMT
 n = omega/(2*pi);
 sep = 2*pi/B;

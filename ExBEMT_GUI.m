@@ -24,6 +24,8 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
         FilterPassesEditField matlab.ui.control.NumericEditField
         UpperAoAEditField matlab.ui.control.NumericEditField
         LowerAoAEditField matlab.ui.control.NumericEditField
+        MaxIterationsEditField matlab.ui.control.NumericEditField % ADD THIS LINE
+        PlotXFOILPolarsCheckBox matlab.ui.control.CheckBox       % ADD THIS LINE
         
         % Dynamic Range Panels
         AnalysisRangePanel matlab.ui.container.Panel
@@ -64,6 +66,7 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
 
         % Construct app
         function app = ExBEMT_GUI
+            clc
             % Create UIFigure and components
             createComponents(app)
             
@@ -177,6 +180,7 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
         end
 
         % Button pushed function: RunBEMTAnalysisButton
+% Button pushed function: RunBEMTAnalysisButton
         function runBEMTAnalysisButtonPushed(app, event)
             % --- Input Validation ---
             if strcmp(app.PropellerDropDown.Value, 'Select Propeller...')
@@ -242,13 +246,18 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
                 radial_correct = app.RadialFlowCheckBox.Value;
                 Use_3D_polar = app.Use3DPolarCheckBox.Value;
                 
+                % MODIFIED: Read new XFOIL settings from GUI
                 if ~Use_old_data_val
-                    NCrit_base = app.NCritEditField.Value;
+                    NCrit_val = app.NCritEditField.Value;
                     filt = app.FilterPassesEditField.Value;
-                    UpperA_main = app.UpperAoAEditField.Value;
-                    LowerA_main = app.LowerAoAEditField.Value;
+                    UpperA_val = app.UpperAoAEditField.Value;
+                    LowerA_val = app.LowerAoAEditField.Value;
+                    max_iter = app.MaxIterationsEditField.Value;
+                    plot_polars = app.PlotXFOILPolarsCheckBox.Value;
                 else
-                    NCrit_base = 3; filt = 10; UpperA_main = 45; LowerA_main = -50; % Default values
+                    % Set default values if using old data (these won't be used anyway)
+                    NCrit_val = 3; filt = 10; UpperA_val = 25; LowerA_val = -20;
+                    max_iter = 200; plot_polars = true;
                 end
 
                 min_alpha = app.MinAlphaEditField.Value;
@@ -275,7 +284,29 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
                 %% Propeller Data Loading
                 [app_path, ~, ~] = fileparts(mfilename('fullpath'));
                 dir_prop = fullfile(app_path, 'Propeller Packages', plotData.Sel_Prop);
+                prop_filepath = fullfile(dir_prop, 'Prop_sections.xlsx');
+
+                if ~exist(prop_filepath, 'file')
+                    error('Prop_sections.xlsx not found in the selected propeller package directory.');
+                end
                 
+                prop_data_cell = readcell(prop_filepath);
+
+                c_row_data = prop_data_cell(3, 2:end);
+                is_valid_section = cellfun(@(x) isnumeric(x) && ~isnan(x) && isreal(x), c_row_data);
+                num_sections = find(is_valid_section, 1, 'last');
+
+                if isempty(num_sections)
+                    error('Could not determine the number of propeller sections. Check for valid numeric data in Row 3 of Prop_sections.xlsx.');
+                end
+                last_col_idx = num_sections + 1;
+                
+                x_blade = cell2mat(prop_data_cell(2, 2:last_col_idx));
+                c       = cell2mat(prop_data_cell(3, 2:last_col_idx));
+                beta    = cell2mat(prop_data_cell(4, 2:last_col_idx));
+                delta_x = cell2mat(prop_data_cell(6, 2:last_col_idx));
+                R       = prop_data_cell{8, 1};
+
                 s = dir(fullfile(dir_prop, 'ClvsAlpha.xlsx'));
                 if isempty(s) || s.bytes < 7000 || ~Use_old_data_val
                    loghtml(app,'Polar file not found or new analysis requested. Running XFOIL.', 'info');
@@ -285,41 +316,30 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
                    Use_old_data = 1;
                 end
                 
-                Blade_P = readmatrix(fullfile(dir_prop, 'Prop_sections.xlsx'), 'Range', 'A1:R8');
-                c = Blade_P(3,2:end); beta = Blade_P(4,2:end); 
-                x_blade = Blade_P(2,2:end); delta_x = Blade_P(6,2:end); 
-                R = Blade_P(8,1);
                 Foil_Use = 1; 
-                
                 n = RPM/60;
                 omega = convangvel(RPM,'RPM','rad/s');
-                
                 Vel = omega * (x_blade * R);
                 Re = (rho .* Vel .* c) ./ mu;
-                
                 Mach = Vel./a;
                 loghtml(app, 'Propeller blade data loaded and conditions calculated.', 'info');
 
                 %% XFOIL Calculations or Data Loading from File
                 if Foil_Use && Use_old_data == 2
-                    Foils = readmatrix(fullfile(dir_prop, 'Prop_sections.xlsx'), 'Range', 'B5:R5', 'OutputType', 'string');
+                    Foils = string(prop_data_cell(5, 2:last_col_idx));
                     Foils(ismissing(Foils)) = []; 
-                    beta_control_points = [min(beta), median(beta), max(beta)];
-                    upperA_values = [27, 35, UpperA_main];
-                    lowerA_values = [-15, -22, LowerA_main];
-                    ncrit_values = [6, 4, NCrit_base];
 
+                    % REMOVED: Scaling algorithm for AoA and NCrit
+                    
                     for iy = 1:length(x_blade)
                         if app.StopRequested, error('Analysis stopped by user.'); end
                         
-                        current_beta = beta(iy);
-                        UpperA = interp1(beta_control_points, upperA_values, current_beta, 'linear', 'extrap');
-                        LowerA = interp1(beta_control_points, lowerA_values, current_beta, 'linear', 'extrap');
-                        NCrit_final = round(interp1(beta_control_points, ncrit_values, current_beta, 'linear', 'extrap'));
-                        NCrit_final = min(NCrit_final, 13); % Cap Ncrit at 13
+                        loghtml(app, ['Running XFOIL for section ', num2str(iy), ' (', Foils{iy}, ')...'], 'info');
                         
-                        loghtml(app, ['Running XFOIL for section ', num2str(iy), '...'], 'info');
-                        [xf{iy}] = xfoil_call(Foils{iy},Re(iy),Mach(iy),NCrit_final,250,round(LowerA),round(UpperA),filt,plotData.Sel_Prop);
+                        % MODIFIED: Call xfoil_call with direct user inputs and new options
+                        [xf{iy}] = xfoil_call(Foils{iy}, Re(iy), Mach(iy), NCrit_val, ...
+                                              max_iter, round(LowerA_val), round(UpperA_val), ...
+                                              filt, plotData.Sel_Prop, plot_polars);
                     end
                     
                     if ~app.StopRequested
@@ -438,7 +458,6 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
                             log_msg = sprintf('Calculating: AOI = <b>%.1f deg</b>, J'' = <b>%.2f</b>', current_alpha_for_calc, current_j_for_calc);
                             loghtml(app, log_msg, 'info');
                             
-                            % --- CORRECTED LOGIC: Plot contours on EVERY iteration ---
                             if app.PlotAzimuthalContoursCheckBox.Value
                                 plotContourResults(app, fidelityModel, current_alpha_for_calc, current_j_for_calc);
                             end
@@ -506,13 +525,14 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
         end
 
         % Create UIFigure and components
+% Create UIFigure and components
         function createComponents(app)
 
             % Create UIFigure and hide it until all components are created
             app.UIFigure = uifigure('Visible', 'off');
             app.UIFigure.Icon = 'ExBEMT_Icon.png';
             app.UIFigure.Position = [100 100 1350 950]; % Increased width
-            app.UIFigure.Name = 'ExBEMT Analysis GUI V1 (062525)';
+            app.UIFigure.Name = 'ExBEMT Analysis GUI V2 (072125)';
             
             % Main App Grid
             app.GridLayout = uigridlayout(app.UIFigure);
@@ -571,7 +591,7 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
             app.AnalysisTypeDropDown.Layout.Column = 2;
             app.AnalysisTypeDropDown.ValueChangedFcn = createCallbackFcn(app, @analysisTypeChanged, true);
             
-            % --- CORRECTED Corrections Panel ---
+            % Corrections Panel
             app.CorrectionsPanel = uipanel(leftPanelLayout, 'Title', 'Corrections & Models');
             app.CorrectionsPanel.Layout.Row = 3;
             corrPanelLayout = uigridlayout(app.CorrectionsPanel);
@@ -586,10 +606,9 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
             app.Use3DPolarCheckBox.Layout.Row = 1;
             app.Use3DPolarCheckBox.Layout.Column = 2;
             
-            % Create and position the label and dropdown to span the panel
             app.FidelityModelDropDown = uidropdown(corrPanelLayout, 'Items', {'BEMT', 'BEMT+ Dynamic Inflow Model', 'BEMT+ Q-Unsteady Dynamic Inflow Model'}, 'Value', 'BEMT');
             app.FidelityModelDropDown.Layout.Row = 2; 
-            app.FidelityModelDropDown.Layout.Column = [1 2]; % Correct way to span columns
+            app.FidelityModelDropDown.Layout.Column = [1 2];
             
             % Run Options Panel
             app.RunOptionsPanel = uipanel(leftPanelLayout, 'Title', 'Run Options');
@@ -643,24 +662,32 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
             uilabel(vLayout, 'Text', 'Max');
             app.MaxVEditField = uieditfield(vLayout,'numeric','Value',10);
             
-            % XFOIL Settings Panel
+            % XFOIL Settings Panel (MODIFIED)
             app.XFOILSettingsPanel = uipanel(leftPanelLayout, 'Title', 'XFOIL Settings');
             xfoilLayout = uigridlayout(app.XFOILSettingsPanel);
-            xfoilLayout.RowHeight = {'fit', 'fit'}; xfoilLayout.ColumnWidth = {'fit', '1x', 'fit', '1x'};
+            xfoilLayout.RowHeight = {'fit', 'fit', 'fit'}; % 3 rows
+            xfoilLayout.ColumnWidth = {'fit', '1x', 'fit', '1x'};
+            
             uilabel(xfoilLayout, 'Text', 'Upper AoA');
-            app.UpperAoAEditField = uieditfield(xfoilLayout, 'numeric', 'Value', 45);
+            app.UpperAoAEditField = uieditfield(xfoilLayout, 'numeric', 'Value', 20);
             uilabel(xfoilLayout, 'Text', 'Lower AoA');
-            app.LowerAoAEditField = uieditfield(xfoilLayout, 'numeric', 'Value', -50);
+            app.LowerAoAEditField = uieditfield(xfoilLayout, 'numeric', 'Value', -15);
+            
             uilabel(xfoilLayout, 'Text', 'NCrit');
             app.NCritEditField = uieditfield(xfoilLayout, 'numeric', 'Value', 3);
             uilabel(xfoilLayout, 'Text', 'Filter Passes');
             app.FilterPassesEditField = uieditfield(xfoilLayout, 'numeric', 'Value', 10);
 
+            uilabel(xfoilLayout, 'Text', 'Max Iterations');
+            app.MaxIterationsEditField = uieditfield(xfoilLayout, 'numeric', 'Value', 200);
+            app.PlotXFOILPolarsCheckBox = uicheckbox(xfoilLayout, 'Text', 'Plot XFOIL Polars');
+            app.PlotXFOILPolarsCheckBox.Layout.Column = [3 4]; % Span last two columns
+
             % Button Panel
             buttonPanel = uipanel(leftPanelLayout, 'BorderType', 'none');
             buttonPanel.Layout.Row = 7;
             buttonLayout = uigridlayout(buttonPanel);
-            buttonLayout.ColumnWidth = {'1.5x', '1x', '1.2x', '1.2x'}; % Adjusted widths
+            buttonLayout.ColumnWidth = {'1.5x', '1x', '1.2x', '1.2x'}; 
             buttonLayout.RowHeight = {'fit'};
             
             app.RunBEMTAnalysisButton = uibutton(buttonLayout, 'push', 'Text', 'Run Analysis');
