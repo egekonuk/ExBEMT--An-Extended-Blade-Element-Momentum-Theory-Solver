@@ -18,20 +18,20 @@ I believe in the power of simplicity and in making complex aerodynamic problems 
 
 **Version 2.0 (07/21/2025)**
 
-This major update focuses on significantly improving the flexibility, robustness, and usability of the ExBEMT solver. The changes move away from hardcoded values and assumptions, giving the user more direct control over the simulation and allowing for more complex propeller geometries to be analyzed seamlessly.
+This update focuses on significantly improving the flexibility, robustness, and usability of the ExBEMT solver.
 
 **Major Features & Enhancements**
 
 **1. Dynamic Propeller Geometry Loading**
+
 The method for loading propeller data from Prop_sections.xlsx has been completely overhauled.
 
 Automatic Section Detection: The GUI no longer relies on a fixed Excel range (e.g., A1:R8). It now dynamically detects the number of blade sections by reading the data in the sheet. This allows users to define propellers with any number of sections without needing to modify the code.
 
 Robust Data Reading: The code now uses readcell to better handle the mixed data types (numbers and text for foil names) in the Excel file, making the data import process more reliable.
 
-Dynamic Foil Name Loading: Foil names are now read dynamically along with the other section data, ensuring the correct airfoil is used for each section's XFOIL analysis.
-
 **2. Improved XFOIL Analysis Workflow**
+
 The interaction with XFOIL has been refined for better performance and stability.
 
 Streamlined XFOIL Call: The xfoil_call function has been updated to be more robust, managing file paths and system calls more effectively.
@@ -39,20 +39,15 @@ Streamlined XFOIL Call: The xfoil_call function has been updated to be more robu
 Organized File Structure: XFOIL input/output files are now managed in dedicated directories to prevent conflicts and keep the project folder clean.
 
 **3. Enhanced User Interface & Experience**
-Several quality-of-life improvements have been added to the GUI.
-
-"Close All Plots" Button: A new button has been added to the main control panel that allows the user to close all open MATLAB plot windows with a single click, making it easier to manage results from multiple runs.
 
 Improved Logging: The log now provides more detailed feedback during the XFOIL analysis, informing the user which section and airfoil is currently being processed.
 
 **Bug Fixes & Code Refinements**
-Corrected File Path Logic: Resolved issues where the script could not find necessary files (like XFOIL.m) if they were located in subdirectories. The code is now more robust to different project folder structures.
-
-Input Argument Handling: Corrected a bug where the xfoil_call function would error due to a mismatch in the number of input arguments. The function definition is now synchronized with the function calls in the main GUI script.
 
 General Stability: Refactored various parts of the code to improve error handling and provide clearer error messages to the user.
 
 **Future Development**
+
 Implement Viterna Post-Stall Model: Integrate the Viterna method to extrapolate airfoil data to high angles of attack (±180 
 ∘
  ). This will provide a more accurate and physically realistic drag polar for stalled conditions, improving overall solver fidelity.
