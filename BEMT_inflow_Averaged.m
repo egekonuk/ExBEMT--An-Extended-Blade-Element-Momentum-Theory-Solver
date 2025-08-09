@@ -1,221 +1,261 @@
-function [TT_final,TN_final,TQ_final,CTT_final,CNT_final,CQT_final]=BEMT_inflow_Averaged(V_inf_prll,V_inf_perp,alpha,beta,Cla,alpha_0, fidelityModel)
+function [TT_final, TN_final, TQ_final, plotData] = BEMT_inflow_Averaged(V_inf_prll, V_inf_perp, settings, CL_P, CD_P)
 %BEMT_inflow_Averaged Performs BEMT analysis with optional dynamic inflow models.
+% This function calculates propeller performance over a full rotation for
+% each blade section, averages the results, and can apply a second pass
+% using a Pitt-Peters dynamic inflow model (steady or unsteady) to correct
+% the induced velocity.
 %
-%   Inputs:
-%       V_inf_prll      - Parallel freestream velocity component
-%       V_inf_perp      - Perpendicular freestream velocity component
-%       alpha           - Angle of incidence (degrees)
-%       beta            - Blade pitch angle distribution (degrees)
-%       Cla             - Lift curve slope for each blade section
-%       alpha_0         - Zero-lift angle of attack for each blade section
-%       fidelityModel   - String specifying model: 'BEMT',
-%                         'BEMT+ Dynamic Inflow Model', or
-%                         'BEMT+ Q-Unsteady Dynamic Inflow Model'
-%
-%   Outputs:
-%       TT_final, TN_final, TQ_final - Total Thrust, Normal Force, and Torque
-%       CTT_final, CNT_final, CQT_final - Corresponding coefficients (from BEMT)
+% VERSION 3 
 
-%% CODE STARTS
-global B R omega rho Np delta_x c x_blade CL_P CD_P AoA_data radial_correct Use_3D_polar Sel_Prop
-%% initialization BEMT
-n = omega/(2*pi);
-sep = 2*pi/B;
-Ua = V_inf_perp;
-Uy = V_inf_prll;
-J = pi*Ua/(omega*R);
-dpsi = 1; %deg
-%% Preallocation
-phicheck = zeros(181,1); UT = zeros(181,1); UR = zeros(181,1); Ut_pr = zeros(181,1);
-phi = zeros(181,1); b_alpha = zeros(181,1); V_rel = zeros(181,1); V_p = zeros(181,1);
-V_t = zeros(181,1); w_a = zeros(181,1); w_t = zeros(181,1); DL = zeros(181,1); DD = zeros(181,1);
-DCL = zeros(181,1); DCD = zeros(181,1); dCT = zeros(181,1); dT = zeros(181,1); dM = zeros(181,1);
-d2n = zeros(181,1); d2M = zeros(181,1); dCN = zeros(181,1); dQ_r = zeros(181,1);
-dN = zeros(181,1); dQ = zeros(181,1); lambda = zeros(181,1); lambda_i = zeros(181,1);
-xi = zeros(181,1); xi_i = zeros(181,1); V_inf_eff = zeros(181,1); psi = zeros(181,1);
+%% 1. INITIALIZATION AND SETUP
+% =========================================================================
 
-% Determine which inflow model to run
-run_di_calcs = ~strcmp(fidelityModel, 'BEMT');
-is_unsteady = strcmp(fidelityModel, 'BEMT+ Q-Unsteady Dynamic Inflow Model');
-is_steady = strcmp(fidelityModel, 'BEMT+ Dynamic Inflow Model');
+% --- Extract Key Parameters from Settings Struct ---
+% This improves readability by using local variables within the function.
+B = settings.B; R = settings.R; omega = settings.omega; rho = settings.rho;
+Np = settings.Np; delta_x = settings.delta_x; c = settings.c;
+x_blade = settings.x_blade; radial_correct = settings.radial_correct;
+Use_3D_polar = settings.Use_3D_polar; fidelityModel = settings.fidelityModel;
+beta = settings.beta;
 
-%% Main Loop
+% --- General Initializations ---
+sep = 2 * pi / B;           % Azimuthal separation between blades in radians.
+Ua = V_inf_perp;            % Axial free-stream velocity (perpendicular to rotor disk).
+Uy = V_inf_prll;            % In-plane free-stream velocity (parallel to rotor disk).
+dpsi_deg = settings.dpsi_deg; % Azimuthal step size for the integration, in degrees.
+dpsi_rad = deg2rad(dpsi_deg); % Convert step size to radians.
+delta_time = dpsi_rad / omega;  % Time step corresponding to the azimuthal step.
+
+% --- Determine which Calculation Path to Use ---
+run_di_calcs = ~strcmp(fidelityModel, 'BEMT'); % Flag to run dynamic inflow (DI) calculations.
+is_unsteady = strcmp(fidelityModel, 'BEMT+ Q-Unsteady Dynamic Inflow Model'); % Flag for unsteady DI model.
+is_steady = strcmp(fidelityModel, 'BEMT+ Dynamic Inflow Model'); % Flag for steady DI model.
+
+% --- Pre-allocate Cell Arrays for Plotting Data ---
+% Pre-allocation is crucial for performance, especially inside loops.
+% Cells are used because the number of azimuthal steps can vary.
+num_sections = length(x_blade);
+% --- BEMT Pass Results ---
+dT_BEMT_plot = cell(num_sections, B); dQ_BEMT_plot = cell(num_sections, B);
+Vel_BEMT_plot = cell(num_sections, B); AoA_BEMT_plot = cell(num_sections, B);
+phi_BEMT_plot = cell(num_sections, B); In_axial_BEMT_plot = cell(num_sections, B);
+In_swirl_BEMT_plot = cell(num_sections, B); psi_BEMT_plot = cell(num_sections, B);
+
+% --- Dynamic Inflow (Pitt-Peters) Pass Results ---
+dT_PITT_plot = cell(num_sections, B); dQ_PITT_plot = cell(num_sections, B);
+Vel_PITT_plot = cell(num_sections, B); AoA_PITT_plot = cell(num_sections, B);
+phi_PITT_plot = cell(num_sections, B); In_axial_PITT_plot = cell(num_sections, B);
+
+% --- Pre-allocate Blade-Level Totals ---
+TT_blade = zeros(1, B); TN_blade = zeros(1, B); TQ_blade = zeros(1, B);
+
+%% 2. MAIN BEMT LOOP (PER BLADE)
+% =========================================================================
+% This loop iterates through each blade of the propeller.
 for bn = 1:B
-    for i = 1:length(x_blade)
-        sigmal(i) = B*c(i)/(2*pi*(x_blade(i)*R));
-        j = 0;
-        delta_time = deg2rad(dpsi)/omega;
-        for t = 0:delta_time:2*pi/B/omega
-            j = j+1;
-            psi(j) = sep*(bn-1) + t*omega;
-            UT(j) = Uy*sin(psi(j));
-            if radial_correct, UR(j) = Uy*cos(psi(j)); else, UR(j) = 0; end
-            Ut_pr(j) = omega*x_blade(i)*R+UT(j);
+    % --- Pre-allocate section-level averages for the current blade ---
+    T_section_avg = zeros(num_sections, 1); % Average Thrust
+    N_section_avg = zeros(num_sections, 1); % Average Normal Force
+    Q_section_avg = zeros(num_sections, 1); % Average Torque
+
+    %% 2A. INNER LOOP (PER BLADE SECTION)
+    % This loop iterates through each radial station along the current blade.
+    for i = 1:num_sections
+        % --- Calculate local solidity for the current section ---
+        sigmal = B*c(i)/(2*pi*(x_blade(i)*R));
+        num_sector_steps = round((2*pi/B/omega) / delta_time) + 1;
+        
+        % --- Pre-allocate arrays for the azimuthal sweep ---
+        psi = zeros(1, num_sector_steps);   % Azimuth angle
+        dT = zeros(1, num_sector_steps);    % Thrust differential
+        dQ = zeros(1, num_sector_steps);    % Torque differential
+        dN = zeros(1, num_sector_steps);    % Normal force differential
+        dM = zeros(1, num_sector_steps);    % Pitching moment differential
+        dn = zeros(1, num_sector_steps);    % Yawing moment differential
+        d2M = zeros(1, num_sector_steps);   % Second harmonic pitching moment
+        d2n = zeros(1, num_sector_steps);   % Second harmonic yawing moment
+        w_a = zeros(1, num_sector_steps);   % Induced axial velocity
+        
+        vel_rev = zeros(1, num_sector_steps); % Relative velocity
+        aoa_rev = zeros(1, num_sector_steps); % Angle of attack
+        phi_rev = zeros(1, num_sector_steps); % Inflow angle
+        in_axial_rev = zeros(1, num_sector_steps); % Axial inflow component
+        in_swirl_rev = zeros(1, num_sector_steps); % Swirl inflow component
+        
+        j = 0; % Azimuthal step counter
+
+        %% 2B. AZIMUTHAL SWEEP (BEMT PASS)
+        % This loop integrates forces over one loading sector of the rotor
+        % disk. aka 180 deg for 2 blades 120 deg for 3 blades etc.
+        for t = 0:delta_time:(2*pi/B/omega)
+            j = j + 1;
+            psi(j) = sep*(bn-1) + t*omega; % Current azimuth angle
             
-            [H,VA_W,VT_W,CL_3D_BEMT(j),CD_3D_BEMT(j),phi(j),b_alpha(j),b_alpha_y(j)] = phi_algorithm_ISAE(Ua,UT(j),UR(j),Ut_pr(j),beta(i),i,sigmal(i),Cla);
+            % --- Calculate local velocity components at the blade section ---
+            UT_j = Uy*sin(psi(j)); % Tangential component from free-stream
+            if radial_correct, UR_j = Uy*cos(psi(j)); else, UR_j = 0; end % Radial component
+            Ut_pr_j = omega*x_blade(i)*R + UT_j; % Total tangential velocity
             
-            if b_alpha(j) > max(AoA_data{i}) || b_alpha(j) < min(AoA_data{i})
-                fprintf('HIGH BLADE ANGLE DETECTED!! @ BEMT. B_alpha = %g @blade = #%d, Vel = %g\n',b_alpha(j),i,Ua/cosd(alpha));
-            end
+            % --- CORE ALGORITHM: Solve for inflow angle and induced velocity using Momentum Theory ---
+            [H, VA_W, VT_W, CL_final, CD_final, phi_j, b_alpha_j, ~] = phi_algorithm_ISAE(Ua, UT_j, UR_j, Ut_pr_j, beta(i), i, sigmal, settings, CL_P, CD_P);
             
-            F(j) = (2/pi)*acos(exp(B*(x_blade(i)-1)/(2*x_blade(i)*sind(phi(j)))));
-            V_rel(j) = Ut_pr(j)/H;
-            V_p(j) = V_rel(j)*sind(phi(j));
-            V_t(j) = V_rel(j)*cosd(phi(j));
-            lambda_y(j) = atand(UR(j)/V_t(j));
-            V_rel_y(j) =  sqrt(V_rel(j)^2+UR(j)^2);
-            w_a(j) = V_rel(j)*VA_W;
-            w_t(j) = V_rel(j)*VT_W;
+            % --- Calculate resultant velocities and forces ---
+            V_rel_j = Ut_pr_j/H;
+            V_rel_y_j = sqrt(V_rel_j^2 + UR_j^2);
+            lambda_y_j = atand(UR_j/(V_rel_j*cosd(phi_j))); % Correction for radial flow
             
-            DL(j) = 0.5*rho*V_rel(j)^2*c(i)*CL_3D_BEMT(j);
-            DD(j) = 0.5*rho*V_rel_y(j)^2*c(i)*CD_3D_BEMT(j);
-            DCL(j) = 0.5*sigmal(i)*V_rel(j)^2/(Ut_pr(j))^2*CL_3D_BEMT(j);
-            DCD(j) = 0.5*sigmal(i)*V_rel_y(j)^2/(Ut_pr(j))^2*CD_3D_BEMT(j);
+            % --- Store BEMT results for this azimuthal step ---
+            w_a(j) = V_rel_j * VA_W; % Axial induced velocity from Momentum Conservation
+            vel_rev(j) = V_rel_y_j;
+            aoa_rev(j) = b_alpha_j;
+            phi_rev(j) = phi_j;
+            in_axial_rev(j) = w_a(j);
+            in_swirl_rev(j) = V_rel_j * VT_W;
             
-            dT(j) = (DL(j)*cosd(phi(j)) - DD(j)*sind(phi(j)))*delta_x(i);
+            % --- Calculate Lift and Drag differentials ---
+            dL = 0.5*rho*V_rel_j^2*c(i)*CL_final;
+            dD = 0.5*rho*V_rel_y_j^2*c(i)*CD_final;
+            
+            % --- Decompose forces into Thrust, Torque, etc. ---
+            dT(j) = (dL*cosd(phi_j) - dD*sind(phi_j))*delta_x(i);
             dM(j) = -dT(j)*x_blade(i)*R*cos(psi(j));
             dn(j) = -dT(j)*x_blade(i)*R*sin(psi(j));
             d2M(j) = -dT(j)*(x_blade(i)*R)^2*cos(2*psi(j));
             d2n(j) = -dT(j)*(x_blade(i)*R)^2*sin(2*psi(j));
-            dQ_r(j) =  ((DL(j)*sind(phi(j)) + DD(j)*cosd(phi(j)))*cosd(lambda_y(j))*delta_x(i));
-            dN(j) = dQ_r(j)*sin(psi(j));
-            dQ(j) = dQ_r(j)*x_blade(i)*R;
-            dCT(j) = (DCL(j)*cosd(phi(j)) - DCD(j)*sind(phi(j)))*delta_x(i)/R;
-            dCQ_r(j) = (DCL(j)*sind(phi(j)) + DCD(j)*cosd(phi(j)))*delta_x(i)/R;
-            dCN(j) = dCQ_r(j)*sin(psi(j));
-            dCQ(j) = dCQ_r(j)*x_blade(i);
-        end
+            dQ_r_j = ((dL*sind(phi_j) + dD*cosd(phi_j))*cosd(lambda_y_j)*delta_x(i));
+            dN(j) = dQ_r_j*sin(psi(j));
+            dQ(j) = dQ_r_j*x_blade(i)*R;
+        end % End of azimuthal sweep
         
-        % Store BEMT results for contour plotting
-        psi_BEMT{i,bn} = psi;
-        dT_BEMT{i,bn} = dT;
-        dQ_BEMT{i,bn} = dQ;
-        Vel_BEMT{i,bn} = V_rel_y;
-        AoA_BEMT{i,bn} = b_alpha_y;
+        % --- Store full azimuthal data for plotting (BEMT Pass) ---
+        psi_BEMT_plot{i,bn} = rad2deg(psi);
+        dT_BEMT_plot{i,bn} = dT; dQ_BEMT_plot{i,bn} = dQ;
+        Vel_BEMT_plot{i,bn} = vel_rev; AoA_BEMT_plot{i,bn} = aoa_rev;
+        phi_BEMT_plot{i,bn} = phi_rev; In_axial_BEMT_plot{i,bn} = in_axial_rev;
+        In_swirl_BEMT_plot{i,bn} = in_swirl_rev;
+
+        % --- Calculate the average forces for this section from the BEMT pass ---
+        T_section_avg(i) = mean(dT);
+        N_section_avg(i) = mean(dN);
+        Q_section_avg(i) = mean(dQ);
         
-        % BEMT Averages
-        T_avg(i,bn) = B/(2*pi)*sum(dT)*Np*deg2rad(dpsi);
-        M_avg(i,bn) = B/(2*pi)*sum(dM)*Np*deg2rad(dpsi);
-        n_avg(i,bn) = B/(2*pi)*sum(dn)*Np*deg2rad(dpsi);
-        N_avg(i,bn) = B/(2*pi)*sum(dN)*Np*deg2rad(dpsi);
-        Q_avg(i,bn) = B/(2*pi)*sum(dQ)*Np*deg2rad(dpsi);
-        M2_avg(i,bn) = B/(2*pi)*sum(d2M)*Np*deg2rad(dpsi);
-        n2_avg(i,bn) = B/(2*pi)*sum(d2n)*Np*deg2rad(dpsi);
-        CT_avg(i,bn) = B/(2*pi)*sum(dCT)*Np*deg2rad(dpsi);
-        CN_avg(i,bn) = B/(2*pi)*sum(dCN)*Np*deg2rad(dpsi);
-        CQ_avg(i,bn) = B/(2*pi)*sum(dCQ)*Np*deg2rad(dpsi);
-        wa_avg = B/(2*pi)*sum(w_a)*Np*deg2rad(dpsi);
-        
+        %% 3. DYNAMIC INFLOW (PITT-PETERS) CORRECTION
+        % =========================================================================
+        % This section runs only if a dynamic inflow model was selected.
+        % It uses the BEMT results to calculate a more accurate induced velocity.
         if run_di_calcs
+            % --- Calculate average moments from the BEMT pass ---
+            M_avg = mean(dM);
+            n_avg = mean(dn);
+            M2_avg = mean(d2M);
+            n2_avg = mean(d2n);
+            wa_avg_sec = mean(w_a); % Average induced velocity from BEMT
+            
+            % --- Calculate STEADY Pitt-Peters coefficients (if applicable) ---
             if is_steady
-                [~,nu_coeff{i}] = Peters_dynamic_inflow(T_avg(i,bn),n_avg(i,bn),M_avg(i,bn),n2_avg(i,bn),M2_avg(i,bn),Ua,Uy,wa_avg);
-                nu_0 = nu_coeff{i}(1); nu_s = nu_coeff{i}(2); nu_c = nu_coeff{i}(3); nu_2s = nu_coeff{i}(4); nu_2c = nu_coeff{i}(5);
+                [~, nu_coeff] = Peters_dynamic_inflow(T_section_avg(i), n_avg, M_avg, n2_avg, M2_avg, Ua, Uy, wa_avg_sec, omega, R, rho);
+                nu_0 = nu_coeff(1); nu_s = nu_coeff(2); nu_c = nu_coeff(3); nu_2s = nu_coeff(4); nu_2c = nu_coeff(5);
             end
             
-            jj = j;
-            for j_di = 1:jj
+            % --- Pre-allocate arrays for the DI pass ---
+            dT_P = zeros(1,j); dQ_P = zeros(1,j); dN_P = zeros(1,j);
+            w_a_final = zeros(1,j); % Final corrected induced velocity
+            
+            %% 3A. AZIMUTHAL SWEEP (DYNAMIC INFLOW PASS)
+            % This loop re-calculates forces using the corrected induced velocity.
+            for j_di = 1:j
+                % --- Calculate UNSTEADY Pitt-Peters coefficients (if applicable) ---
                 if is_unsteady
-                    if j_di == 1, diff=1; dTs=[dT(j_di) dT(j_di+1)]; dns=[dn(j_di) dn(j_di+1)]; dMs=[dM(j_di) dM(j_di+1)]; d2ns=[d2n(j_di) d2n(j_di+1)]; d2Ms=[d2M(j_di) d2M(j_di+1)]; w_as=[w_a(j_di) w_a(j_di+1)];
-                    elseif j_di == jj, diff=2; dTs=[dT(j_di-1) dT(j_di)]; dns=[dn(j_di-1) dn(j_di)]; dMs=[dM(j_di-1) dM(j_di)]; d2ns=[d2n(j_di-1) d2n(j_di)]; d2Ms=[d2M(j_di-1) d2M(j_di)]; w_as=[w_a(j_di-1) w_a(j_di)];
-                    else, diff=2; dTs=[dT(j_di-1) dT(j_di) dT(j_di+1)]; dns=[dn(j_di-1) dn(j_di) dn(j_di+1)]; dMs=[dM(j_di-1) dM(j_di) dM(j_di+1)]; d2ns=[d2n(j_di-1) d2n(j_di) d2n(j_di+1)]; d2Ms=[d2M(j_di-1) d2M(j_di) d2M(j_di+1)]; w_as=[w_a(j_di-1) w_a(j_di) w_a(j_di+1)];
+                    % --- Setup finite difference stencil for time derivatives ---
+                    if j_di == 1, diff_idx=1; stencil_range = j_di:j_di+1;       % Forward difference
+                    elseif j_di == j, diff_idx=2; stencil_range = j_di-1:j_di;  % Backward difference
+                    else, diff_idx=2; stencil_range = j_di-1:j_di+1;          % Central difference
                     end
-                    [~,nu_coeff_unsteady] = Peters_dynamic_unsteady_inflow(dTs,dns,dMs,d2ns,d2Ms,Ua,Uy,w_as,diff,delta_time*omega);
-                    nu_0 = nu_coeff_unsteady(1); nu_s = nu_coeff_unsteady(2); nu_c = nu_coeff_unsteady(3); nu_2s = nu_coeff_unsteady(4); nu_2c = nu_coeff_unsteady(5);
+                    dTs=dT(stencil_range); dns=dn(stencil_range); dMs=dM(stencil_range); 
+                    d2ns=d2n(stencil_range); d2Ms=d2M(stencil_range); w_as=w_a(stencil_range);
+                    
+                    [~, nu_coeff_unsteady] = Peters_dynamic_unsteady_inflow(dTs,dns,dMs,d2ns,d2Ms,Ua,Uy,w_as,diff_idx,delta_time, omega, R, rho);
+                    nu_0 = nu_coeff_unsteady(1); nu_s = nu_coeff_unsteady(2); nu_c = nu_coeff_unsteady(3); 
+                    nu_2s = nu_coeff_unsteady(4); nu_2c = nu_coeff_unsteady(5);
                 end
                 
+                % --- Calculate the final, corrected induced velocity at this azimuth ---
                 psi_current = psi(j_di);
                 w_a_final(j_di) = (nu_0 + nu_s*x_blade(i)*sin(psi_current) + nu_c*x_blade(i)*cos(psi_current) ...
                     + nu_2s*x_blade(i)^2*sin(2*psi_current) + nu_2c*x_blade(i)^2*cos(2*psi_current))*omega*R;
                 
-                V_t_P(j_di) = Ut_pr(j_di) - w_t(j_di);
-                V_p_P(j_di) = Ua + w_a_final(j_di);
-                phi_P(j_di) = atand(V_p_P(j_di)/V_t_P(j_di));
-                b_alpha_P(j_di) =  beta(i) - phi_P(j_di);
-                W_P(j_di) = sqrt(V_t_P(j_di)^2+V_p_P(j_di)^2);
-                lambda_y_p(j_di) = atand(UR(j_di)/(V_t_P(j_di)));
-                b_alpha_P_y(j_di) = b_alpha_P(j_di) * cosd(lambda_y_p(j_di));
-                W_P_y(j_di) = sqrt(V_t_P(j_di)^2 + UR(j_di)^2 + V_p_P(j_di)^2);
+                % --- Re-calculate local flow conditions with the new induced velocity ---
+                Ua_eff = Ua + w_a_final(j_di);
+                Ut_pr_j = omega*x_blade(i)*R + Uy*sin(psi_current);
+                UR_j = Uy*cos(psi_current);
+                
+                % --- Re-run the core algorithm with corrected inflow ---
+                [H, ~, ~, CL_final, CD_final, phi_j, b_alpha_j, ~] = phi_algorithm_ISAE(Ua_eff, Ut_pr_j, UR_j, Ut_pr_j, beta(i), i, sigmal, settings, CL_P, CD_P);
+                V_rel_j = Ut_pr_j/H;
+                V_rel_y_j = sqrt(V_rel_j^2 + UR_j^2);
+                
+                % --- Re-calculate Lift and Drag with corrected flow ---
+                dL_P = 0.5*rho*V_rel_j^2*c(i)*CL_final;
+                dD_P = 0.5*rho*V_rel_y_j^2*c(i)*CD_final;
+                
+                % --- Decompose and store final forces ---
+                dT_P(j_di) = (dL_P*cosd(phi_j) - dD_P*sind(phi_j))*delta_x(i);
+                dQ_r_P = ((dL_P*sind(phi_j) + dD_P*cosd(phi_j))*delta_x(i))*cosd(atand(UR_j/(V_rel_j*cosd(phi_j))));
+                dN_P(j_di) = dQ_r_P*sin(psi_current);
+                dQ_P(j_di) = dQ_r_P*x_blade(i)*R;
 
-                if b_alpha_P(j_di) > max(AoA_data{i}) || b_alpha_P(j_di) < min(AoA_data{i})
-                     fprintf('HIGH BLADE ANGLE DETECTED!! @ DI. B_alpha = %g @blade = #%d, Vel = %g\n',b_alpha_P(j_di),i,Ua/cosd(alpha));
-                end
-                
-                if Use_3D_polar && x_blade(i) < 0.8
-                    J_loc = 2*pi*Ua/(omega*2*R+2*pi*UT(j_di)); R0 = 1/(1+J_loc^2)*(x_blade(i)*R/c(i));
-                    fL = tanh(R0^-2)^3; fD = fL/2;
-                    CD_0 = CD_P{i}(alpha_0(i));
-                    dCl = Cla(i)*deg2rad((b_alpha_P(j_di)-alpha_0(i))) - CL_P{i}(b_alpha_P(j_di));
-                    dCd = CD_P{i}(b_alpha_P_y(j_di))-CD_0;
-                else, fL=0;fD=0;dCl=0;dCd=0;
-                end
-                CL_3D_DI(j_di) = CL_P{i}(b_alpha_P(j_di)) + fL*dCl;
-                CD_3D_DI(j_di) = CD_P{i}(b_alpha_P_y(j_di)) + fD*dCd;
-                
-                DL_P(j_di) = 0.5*rho*W_P(j_di)^2*c(i)*CL_3D_DI(j_di);
-                DD_P(j_di) = 0.5*rho*W_P_y(j_di)^2*c(i)*CD_3D_DI(j_di);
-                dT_P(j_di) = (DL_P(j_di)*cosd(phi_P(j_di)) - DD_P(j_di)*sind(phi_P(j_di)))*delta_x(i);
-                dQ_r_P(j_di) =  ((DL_P(j_di)*sind(phi_P(j_di)) + DD_P(j_di)*cosd(phi_P(j_di)))*delta_x(i))*cosd(lambda_y_p(j_di));
-                dN_P(j_di) = dQ_r_P(j_di)*sin(psi_current);
-                dQ_P(j_di) = dQ_r_P(j_di)*x_blade(i)*R;
-            end
+                % --- Store full azimuthal data for plotting (DI Pass) ---
+                Vel_PITT_plot{i,bn}(j_di) = V_rel_y_j;
+                AoA_PITT_plot{i,bn}(j_di) = b_alpha_j;
+                phi_PITT_plot{i,bn}(j_di) = phi_j;
+                In_axial_PITT_plot{i,bn}(j_di) = w_a_final(j_di);
+            end % End of DI azimuthal sweep
             
-            % Store DI results for contour plotting
-            dT_PITT{i,bn} = dT_P;
-            dQ_PITT{i,bn} = dQ_P;
-            Vel_PITT{i,bn} = W_P_y;
-            AoA_PITT{i,bn} = b_alpha_P_y;
+            % --- Store final corrected thrust and torque for plotting ---
+            dT_PITT_plot{i,bn} = dT_P;
+            dQ_PITT_plot{i,bn} = dQ_P;
             
-            % Overwrite BEMT averages with DI averages
-            T_avg(i,bn) = B/(2*pi)*sum(dT_P)*Np*deg2rad(dpsi);
-            N_avg(i,bn) = B/(2*pi)*sum(dN_P)*Np*deg2rad(dpsi);
-            Q_avg(i,bn) = B/(2*pi)*sum(dQ_P)*Np*deg2rad(dpsi);
-        end
-    end
+            % --- OVERWRITE the average forces with the corrected DI results ---
+            T_section_avg(i) = mean(dT_P);
+            N_section_avg(i) = mean(dN_P);
+            Q_section_avg(i) = mean(dQ_P);
+        end % End of if(run_di_calcs)
+    end % End of section loop
     
-    TT_blade(bn) = sum(T_avg(:,bn));
-    TN_blade(bn) = sum(N_avg(:,bn));
-    TQ_blade(bn) = sum(Q_avg(:,bn));
-    CT_blade(bn) = sum(CT_avg(:,bn));
-    CN_blade(bn) = sum(CN_avg(:,bn));
-    CQ_blade(bn) = sum(CQ_avg(:,bn));
-end
+    % --- Sum the averaged section forces to get the total for this blade ---
+    TT_blade(bn) = sum(T_section_avg);
+    TN_blade(bn) = sum(N_section_avg);
+    TQ_blade(bn) = sum(Q_section_avg);
+end % End of blade loop
 
-%% Final Total Propeller sum
+%% 4. FINAL AGGREGATION AND OUTPUT
+% =========================================================================
+
+% --- Sum the forces from all blades for the final propeller totals ---
 TT_final = sum(TT_blade);
 TN_final = sum(TN_blade);
 TQ_final = sum(TQ_blade);
-CTT_final = sum(CT_blade);
-CNT_final = sum(CN_blade);
-CQT_final = sum(CQ_blade);
 
-%% Assign Plotting Variables to Base Workspace
-disp('Assigning results to base workspace for potential plotting...');
-try
-    assignin('base', 'dT_BEMT', dT_BEMT);
-    assignin('base', 'dQ_BEMT', dQ_BEMT);
-    assignin('base', 'Vel_BEMT', Vel_BEMT);
-    assignin('base', 'AoA_BEMT', AoA_BEMT);
-    if run_di_calcs
-        assignin('base', 'dT_PITT', dT_PITT);
-        assignin('base', 'dQ_PITT', dQ_PITT);
-        assignin('base', 'Vel_PITT', Vel_PITT);
-        assignin('base', 'AoA_PITT', AoA_PITT);
-    end
-    assignin('base', 'psi_BEMT', psi_BEMT);
-    assignin('base', 'x_blade', x_blade);
-    assignin('base', 'B', B);
-    assignin('base', 'J_plot', J);
-    assignin('base', 'alpha_plot', alpha);
-catch ME
-    disp('Warning: Could not assign variables to base workspace for plotting.');
-    disp(ME.message);
+% --- Package all plotting variables into a struct to be returned ---
+plotData = struct();
+% --- BEMT Pass Data ---
+plotData.dT_BEMT = dT_BEMT_plot;
+plotData.dQ_BEMT = dQ_BEMT_plot;
+plotData.Vel_BEMT = Vel_BEMT_plot;
+plotData.AoA_BEMT = AoA_BEMT_plot;
+plotData.phi_BEMT = phi_BEMT_plot;
+plotData.In_axial_BEMT = In_axial_BEMT_plot;
+plotData.In_swirl_BEMT = In_swirl_BEMT_plot;
+plotData.psi_BEMT = psi_BEMT_plot;
+
+% --- Dynamic Inflow Pass Data (if run) ---
+if run_di_calcs
+    plotData.dT_PITT = dT_PITT_plot;
+    plotData.dQ_PITT = dQ_PITT_plot;
+    plotData.Vel_PITT = Vel_PITT_plot;
+    plotData.AoA_PITT = AoA_PITT_plot;
+    plotData.phi_PITT = phi_PITT_plot;
+    plotData.In_axial_PITT = In_axial_PITT_plot;
 end
 
-%% Save all data
-folderName = fullfile('Saved Data', 'BEMT_DATA');
-if ~exist(folderName, 'dir'), mkdir(folderName); end
-fileName = sprintf('%s_%.2g_%ddeg.mat', Sel_Prop, J, alpha);
-filePath = fullfile(folderName, fileName);
-save(filePath);
-disp(['Workspace variables have been saved to ' filePath]);
-end
+end % End of function
