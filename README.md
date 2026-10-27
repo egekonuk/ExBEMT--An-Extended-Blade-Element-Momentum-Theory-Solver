@@ -75,6 +75,8 @@ ExBEMT implements several models to provide a range of fidelity and computationa
 
 * MATLAB (R2024a or newer)
 * MATLAB Aerospace Toolbox (for `atmosisa` and `convangvel` functions)
+* MATLAB Parallel Computing Toolbox (for `parpool` and parallel progress logging)
+* MATLAB Curve Fitting Toolbox (for `fit` interpolants of the airfoil polars)
 * XFOIL: The executable (`xfoil.exe` for Windows) must be included in the project's root directory or in your system's PATH.
 * **Python Environment (Optional):** Required for using the NeuralFoil analysis method. The solver will call the `run_neuralfoil.py` script.
 

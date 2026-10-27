@@ -376,7 +376,7 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
                 % ==========================================================
                 
                 % --- Calculate Atmospheric Properties ---
-                [~, ~, ~, rho, nu, a] = atmosisa(settings.Height);
+                [~, a, ~, rho, nu, ~] = atmosisa(settings.Height);
                 settings.rho = rho; 
                 settings.nu = nu; 
                 settings.omega = convangvel(settings.RPM, 'RPM', 'rad/s');
@@ -493,7 +493,7 @@ classdef ExBEMT_GUI < matlab.apps.AppBase
                         end
 
                        % --- Calculate Re and Mach for each blade section ---
-                       Re = (settings.rho * settings.omega .* settings.x_blade * settings.R .* settings.c) / settings.nu;
+                       Re = (settings.omega .* settings.x_blade * settings.R .* settings.c) / settings.nu;
                        Mach = (settings.omega .* settings.x_blade * settings.R) / a;
                        xf = cell(1, length(settings.x_blade));
                        

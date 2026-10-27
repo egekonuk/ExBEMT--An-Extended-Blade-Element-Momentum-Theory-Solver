@@ -15,7 +15,7 @@ if use_neuralfoil
     % For NeuralFoil, we can determine Cla and alpha_0 dynamically from the
     % pre-computed interpolant for the current flight condition.
     V_rel_approx = sqrt(Ua^2 + Ut_pr^2);
-    reynolds_number = (settings.rho * V_rel_approx * settings.c(i)) / settings.nu;
+    reynolds_number = (V_rel_approx * settings.c(i)) / settings.nu;
     
     % Use the min/max Re from the GUI settings for clamping
     re_min = settings.nf_re_min; 
@@ -61,7 +61,7 @@ while abs(phi_1-phi_2) > 1.0e-6
     if use_neuralfoil
         % For NeuralFoil, interpolate on the pre-computed grid.
         V_rel_approx = sqrt(Ua^2 + Ut_pr^2);
-        reynolds_number = (settings.rho * V_rel_approx * c(i)) / settings.nu;
+        reynolds_number = (V_rel_approx * c(i)) / settings.nu;
         
         % Clamp Reynolds number to the pre-computed grid bounds
         re_min = settings.nf_re_min; re_max = settings.nf_re_max;
